@@ -110,7 +110,9 @@
       import { getDocument } from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs';
 
       const slidesRoot = document.getElementById('slides');
-      const pdfUrl = './slides.pdf';
+      const DRIVE_FILE_ID = '1AMERqqv3CZsD85Ig2AP0MfIkSfMl_7wo';
+      const pdfUrl = `https://drive.google.com/uc?export=download&id=${DRIVE_FILE_ID}`;
+      const drivePreviewUrl = `https://drive.google.com/file/d/${DRIVE_FILE_ID}/preview`;
 
       // Initialize Reveal early (content will be injected later)
       const deck = new window.Reveal({
@@ -197,6 +199,22 @@
           renderedPages.clear();
           rerenderVisible(pdfDoc);
         });
+      }).catch((err) => {
+        console.warn('Falling back to Google Drive preview iframe due to PDF fetch error:', err);
+        // Fallback: embed Drive preview iframe
+        const section = document.createElement('section');
+        const container = document.createElement('div');
+        container.className = 'pdf-slide';
+        const iframe = document.createElement('iframe');
+        iframe.src = drivePreviewUrl;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = '0';
+        iframe.allow = 'autoplay';
+        container.appendChild(iframe);
+        section.appendChild(container);
+        slidesRoot.appendChild(section);
+        deck.sync();
       });
 
       // Simple annotation overlay
