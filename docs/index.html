@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Interactive Slides</title>
+    <!-- Reveal.js core CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/reveal.js@5/dist/reveal.css" />
+    <!-- Theme (light to match example site aesthetic) -->
+    <link id="reveal-theme" rel="stylesheet" href="https://unpkg.com/reveal.js@5/dist/theme/white.css" />
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <!-- Local branding overrides -->
+    <link rel="stylesheet" href="./theme.css" />
+    <style>
+      :root {
+        --accent: #32a8ff;
+        --bg: #111;
+        --fg: #eee;
+      }
+      body { background: var(--bg); color: var(--fg); }
+
+      /* Fit canvases to slide area */
+      .pdf-slide {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+      canvas.pdf-canvas {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.05);
+        background: #fff;
+      }
+
+      /* Simple control bar */
+      .controls-bar {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 50;
+        display: flex;
+        gap: 8px;
+      }
+      .controls-bar button {
+        background: rgba(0,0,0,0.55);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .controls-bar button:hover {
+        background: rgba(0,0,0,0.75);
+      }
+
+      /* Annotation overlay */
+      #annotationCanvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 40;
+        display: none;
+      }
+      #annotationCanvas.active {
+        display: block;
+      }
+      .hint {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        z-index: 50;
+        background: rgba(0,0,0,0.5);
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls-bar" aria-label="Annotation controls">
+      <button id="toggleAnnotate" title="Toggle annotation overlay (A)">Annotate</button>
+      <button id="clearAnnotate" title="Clear annotations (C)">Clear</button>
+      <button id="helpBtn" title="Help">Help</button>
+    </div>
+    <canvas id="annotationCanvas"></canvas>
+    <div class="hint">Keys: A = annotate, C = clear, S = speaker notes, Alt+Click = zoom</div>
+
+    <div class="reveal">
+      <div class="slides" id="slides"></div>
+    </div>
+
+    <!-- Reveal.js core and plugins -->
+    <script src="https://unpkg.com/reveal.js@5/dist/reveal.js"></script>
+    <script src="https://unpkg.com/reveal.js@5/plugin/notes/notes.js"></script>
+    <script src="https://unpkg.com/reveal.js@5/plugin/zoom/zoom.js"></script>
+    <script src="https://unpkg.com/reveal.js@5/plugin/search/search.js"></script>
+    <script src="https://unpkg.com/reveal.js-menu@2/menu.js"></script>
+
+    <!-- pdf.js (ESM) -->
+    <script type="module">
+      import { getDocument } from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs';
+
+      const slidesRoot = document.getElementById('slides');
+      const pdfUrl = './slides.pdf';
+
+      // Initialize Reveal early (content will be injected later)
+      const deck = new window.Reveal({
+        hash: true,
+        hashOneBasedIndex: true,
+        history: true,
+        controls: true,
+        progress: true,
+        center: true,
+        width: 1280,
+        height: 720,
+        margin: 0.04,
+        slideNumber: 'c/t',
+        plugins: [ window.RevealNotes, window.RevealZoom, window.RevealSearch, window.RevealMenu ],
+      });
+      deck.initialize();
+
+      const docLoadingTask = getDocument(pdfUrl);
+      const renderedPages = new Map();
+
+      function createSlide(pageIndex) {
+        const section = document.createElement('section');
+        section.setAttribute('data-background-color', '#111');
+        const container = document.createElement('div');
+        container.className = 'pdf-slide';
+        const canvas = document.createElement('canvas');
+        canvas.className = 'pdf-canvas';
+        canvas.dataset.pageIndex = String(pageIndex);
+        container.appendChild(canvas);
+        section.appendChild(container);
+        return section;
+      }
+
+      async function renderPageToCanvas(pdfDoc, pageIndex) {
+        if (renderedPages.has(pageIndex)) return; // already rendered
+        const pageNum = pageIndex + 1;
+        const page = await pdfDoc.getPage(pageNum);
+
+        // Base viewport for scale 1, then fit into Reveal available area
+        const baseViewport = page.getViewport({ scale: 1 });
+        const { clientWidth, clientHeight } = deck.getViewportElement();
+        const availableWidth = clientWidth * (1 - deck.getConfig().margin * 2);
+        const availableHeight = clientHeight * (1 - deck.getConfig().margin * 2);
+        const scale = Math.min(
+          availableWidth / baseViewport.width,
+          availableHeight / baseViewport.height
+        );
+        const viewport = page.getViewport({ scale });
+
+        const canvas = slidesRoot.querySelector(
+          `canvas.pdf-canvas[data-page-index="${pageIndex}"]`
+        );
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        renderedPages.set(pageIndex, true);
+      }
+
+      function rerenderVisible(pdfDoc) {
+        const indices = deck.getIndices();
+        // Render current, previous, next for snappy nav
+        const around = [indices.h - 1, indices.h, indices.h + 1].filter(
+          (i) => i >= 0 && i < pdfDoc.numPages
+        );
+        around.forEach((i) => renderPageToCanvas(pdfDoc, i));
+      }
+
+      docLoadingTask.promise.then(async (pdfDoc) => {
+        // Build slides
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < pdfDoc.numPages; i += 1) {
+          frag.appendChild(createSlide(i));
+        }
+        slidesRoot.appendChild(frag);
+        deck.sync();
+
+        // Initial render
+        rerenderVisible(pdfDoc);
+
+        deck.on('slidechanged', () => rerenderVisible(pdfDoc));
+        window.addEventListener('resize', () => {
+          renderedPages.clear();
+          rerenderVisible(pdfDoc);
+        });
+      });
+
+      // Simple annotation overlay
+      const annotationCanvas = document.getElementById('annotationCanvas');
+      const toggleBtn = document.getElementById('toggleAnnotate');
+      const clearBtn = document.getElementById('clearAnnotate');
+      const helpBtn = document.getElementById('helpBtn');
+
+      let isAnnotating = false;
+      let isDrawing = false;
+      let lastX = 0;
+      let lastY = 0;
+      const annoCtx = annotationCanvas.getContext('2d');
+
+      function resizeAnnotationCanvas() {
+        const dpr = Math.max(window.devicePixelRatio || 1, 1);
+        annotationCanvas.width = Math.floor(window.innerWidth * dpr);
+        annotationCanvas.height = Math.floor(window.innerHeight * dpr);
+        annotationCanvas.style.width = window.innerWidth + 'px';
+        annotationCanvas.style.height = window.innerHeight + 'px';
+        annoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        annoCtx.lineJoin = 'round';
+        annoCtx.lineCap = 'round';
+        annoCtx.lineWidth = 3;
+        annoCtx.strokeStyle = 'rgba(255, 215, 0, 0.95)';
+      }
+
+      function setAnnotating(on) {
+        isAnnotating = on;
+        annotationCanvas.classList.toggle('active', on);
+        if (on) resizeAnnotationCanvas();
+      }
+
+      function pointerPos(evt) {
+        const rect = annotationCanvas.getBoundingClientRect();
+        const x = (evt.clientX ?? (evt.touches && evt.touches[0].clientX)) - rect.left;
+        const y = (evt.clientY ?? (evt.touches && evt.touches[0].clientY)) - rect.top;
+        return { x, y };
+      }
+
+      function startDraw(evt) {
+        if (!isAnnotating) return;
+        isDrawing = true;
+        const { x, y } = pointerPos(evt);
+        lastX = x; lastY = y;
+        evt.preventDefault();
+      }
+      function moveDraw(evt) {
+        if (!isAnnotating || !isDrawing) return;
+        const { x, y } = pointerPos(evt);
+        annoCtx.beginPath();
+        annoCtx.moveTo(lastX, lastY);
+        annoCtx.lineTo(x, y);
+        annoCtx.stroke();
+        lastX = x; lastY = y;
+        evt.preventDefault();
+      }
+      function endDraw(evt) {
+        if (!isAnnotating) return;
+        isDrawing = false;
+        evt.preventDefault();
+      }
+
+      annotationCanvas.addEventListener('mousedown', startDraw);
+      annotationCanvas.addEventListener('mousemove', moveDraw);
+      annotationCanvas.addEventListener('mouseup', endDraw);
+      annotationCanvas.addEventListener('mouseleave', endDraw);
+      annotationCanvas.addEventListener('touchstart', startDraw, { passive: false });
+      annotationCanvas.addEventListener('touchmove', moveDraw, { passive: false });
+      annotationCanvas.addEventListener('touchend', endDraw, { passive: false });
+
+      toggleBtn.addEventListener('click', () => setAnnotating(!isAnnotating));
+      clearBtn.addEventListener('click', () => {
+        annoCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+      });
+      helpBtn.addEventListener('click', () => {
+        alert('Shortcuts:\nA: toggle annotate\nC: clear annotations\nS: speaker notes\nAlt+Click: zoom');
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'a' || e.key === 'A') setAnnotating(!isAnnotating);
+        if (e.key === 'c' || e.key === 'C') {
+          annoCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+        }
+      });
+
+      window.addEventListener('resize', () => {
+        if (isAnnotating) resizeAnnotationCanvas();
+      });
+    </script>
+  </body>
+  </html>
+
+

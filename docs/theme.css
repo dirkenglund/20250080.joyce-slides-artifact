@@ -1,0 +1,45 @@
+/* Lightweight branding overrides. Adjust variables to match your deck. */
+:root {
+  --accent: #2d9cdb; /* primary accent, similar to example */
+  --accent-contrast: #0b74a5;
+  --r-background-color: #f6f8fb; /* light neutral background */
+  --r-main-color: #111111;
+  --r-heading-color: #111111;
+  --r-main-font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --r-heading-font: var(--r-main-font);
+  --r-code-font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --r-link-color: var(--accent);
+  --r-link-color-hover: var(--accent-contrast);
+  --r-selection-background-color: rgba(45, 156, 219, 0.25);
+}
+
+.reveal .slides {
+  text-shadow: none;
+}
+.reveal h1, .reveal h2, .reveal h3 {
+  letter-spacing: 0.2px;
+}
+.reveal a {
+  text-decoration-thickness: 2px;
+}
+.reveal .progress span {
+  background: var(--accent);
+}
+
+/* Toolbar positioning for visibility */
+.controls-bar .active {
+  outline: 2px solid var(--accent);
+}
+
+/* Optional: faint border around canvases */
+canvas.pdf-canvas {
+  border-radius: 4px;
+}
+
+/* Make menu readable in dark mode (reveal.js-menu) */
+.reveal .slide-menu { background: rgba(0,0,0,0.9); color: #eee; }
+.reveal .slide-menu .menu-tabs a { color: #ddd; }
+.reveal .slide-menu .menu-item { color: #eee; }
+.reveal .slide-menu .active { color: var(--accent); }
+
+
