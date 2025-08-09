@@ -115,10 +115,11 @@
       const DRIVE_FILE_ID = '1AMERqqv3CZsD85Ig2AP0MfIkSfMl_7wo';
       const params = new URLSearchParams(window.location.search);
       const overridePdf = params.get('pdf');
+      const defaultPdfGcs = 'https://storage.googleapis.com/slides-dirken-20250809-011405/slides.pdf';
       const localPdf = './slides.pdf';
       const driveDownload = `https://drive.google.com/uc?export=download&id=${DRIVE_FILE_ID}`;
       const drivePreviewUrl = `https://drive.google.com/file/d/${DRIVE_FILE_ID}/preview`;
-      const pdfUrl = overridePdf || localPdf || driveDownload;
+      const pdfUrl = overridePdf || defaultPdfGcs || localPdf || driveDownload;
 
       // Initialize Reveal early (content will be injected later)
       const deck = new window.Reveal({
@@ -188,7 +189,37 @@
         around.forEach((i) => renderPageToCanvas(pdfDoc, i));
       }
 
+      function fallbackToDrivePreview(reason) {
+        if (reason) console.warn('PDF load failed or timed out; showing Drive preview:', reason);
+        const section = document.createElement('section');
+        const container = document.createElement('div');
+        container.className = 'pdf-slide';
+        const iframe = document.createElement('iframe');
+        iframe.src = drivePreviewUrl;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = '0';
+        iframe.allow = 'autoplay';
+        container.appendChild(iframe);
+        section.appendChild(container);
+        slidesRoot.appendChild(section);
+        deck.sync();
+      }
+
+      // Race PDF load against a timeout; fallback to Drive preview on timeout
+      const PDF_LOAD_TIMEOUT_MS = 12000;
+      let settled = false;
+      const timerId = setTimeout(async () => {
+        if (settled) return;
+        settled = true;
+        try { await docLoadingTask?.destroy?.(); } catch {}
+        fallbackToDrivePreview(new Error('pdf-load-timeout'));
+      }, PDF_LOAD_TIMEOUT_MS);
+
       docLoadingTask.promise.then(async (pdfDoc) => {
+        if (settled) return; // already timed out
+        settled = true;
+        clearTimeout(timerId);
         // Build slides
         const frag = document.createDocumentFragment();
         for (let i = 0; i < pdfDoc.numPages; i += 1) {
@@ -208,24 +239,14 @@
         // Wire download button
         const dl = document.getElementById('downloadBtn');
         if (dl) dl.href = pdfUrl;
-      }).catch((err) => {
-        console.warn('Falling back to Google Drive preview iframe due to PDF fetch error:', err);
-        // Fallback: embed Drive preview iframe
-        const section = document.createElement('section');
-        const container = document.createElement('div');
-        container.className = 'pdf-slide';
-        const iframe = document.createElement('iframe');
-        iframe.src = drivePreviewUrl;
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.border = '0';
-        iframe.allow = 'autoplay';
-        container.appendChild(iframe);
-        section.appendChild(container);
-        slidesRoot.appendChild(section);
-        deck.sync();
+      }).catch(async (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerId);
+        try { await docLoadingTask?.destroy?.(); } catch {}
+        fallbackToDrivePreview(err);
         const dl = document.getElementById('downloadBtn');
-        if (dl) dl.href = driveDownload;
+        if (dl) dl.href = overridePdf || defaultPdfGcs || driveDownload;
       });
 
       // Simple annotation overlay
