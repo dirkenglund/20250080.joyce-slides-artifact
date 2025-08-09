@@ -1,0 +1,23 @@
+name: Smoke Test (curl)
+
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: ["completed"]
+
+jobs:
+  curl-check:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check site is live
+        run: |
+          set -euo pipefail
+          BASE="https://dirkenglund.github.io/20250080.joyce-slides-artifact/"
+          echo "GET $BASE" && curl -fsSIL "$BASE" | cat
+          HTML=$(curl -fsS "$BASE")
+          echo "$HTML" | grep -q 'unpkg.com/reveal.js' || (echo 'reveal.js not found' && exit 1)
+          echo "$HTML" | grep -q 'pdf.min.mjs' || (echo 'pdf.js not found' && exit 1)
+          echo "$HTML" | grep -q 'drive.google.com/uc?export=download' || echo 'Drive link not detected (may be using local slides.pdf)'
+
+
